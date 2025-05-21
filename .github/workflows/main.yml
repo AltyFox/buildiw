@@ -52,18 +52,24 @@ jobs:
           echo "PATH=$TOOLCHAIN_DIR/bin:$PATH" >> $GITHUB_ENV
           echo "CROSS_COMPILE=aarch64-linux-android-" >> $GITHUB_ENV
 
-      - name: Build libnl using build_release.sh
+      - name: Download and build libnl 3.11.0
         run: |
-          git clone https://github.com/thom311/libnl.git
-          cd libnl
-          git clean -fdx
+          wget https://github.com/thom311/libnl/releases/download/libnl3_11_0/libnl-3.11.0.tar.gz
+          tar -xf libnl-3.11.0.tar.gz
+          cd libnl-3.11.0
 
-          export NO_GPG_SIGN=1
-          export CROSS_COMPILE=aarch64-linux-android-
-          export PATH="${{ env.TOOLCHAIN_DIR }}/bin:$PATH"
+          export PATH="$TOOLCHAIN_DIR/bin:$PATH"
+          export CC="${CROSS_COMPILE}gcc"
+          export AR="${CROSS_COMPILE}ar"
+          export RANLIB="${CROSS_COMPILE}ranlib"
 
-          ./tools/build_release.sh BuildAll
+          ./configure \
+            --host=aarch64-linux-android \
+            --prefix="${INSTALL_DIR}" \
+            --disable-cli
 
+          make -j$(nproc)
+          make install
 
       - name: Build iw
         run: |
