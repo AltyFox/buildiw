@@ -77,7 +77,7 @@ jobs:
             NL1FOUND=y NL2FOUND=y NL3FOUND=y
 
       - name: Upload iw binary
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: iw-aarch64-android
           path: iw/iw
