@@ -1,0 +1,61 @@
+name: Build iw for aarch64 Android
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    env:
+      ANDROID_NDK_VERSION: r25c
+      ANDROID_API: 31
+      ANDROID_ARCH: arm64
+      TOOLCHAIN_ROOT: ${{ github.workspace }}/android-ndk
+
+    steps:
+
+      - name: Download Android NDK
+        run: |
+          NDK_ZIP=android-ndk-${ANDROID_NDK_VERSION}-linux.zip
+          curl -LO https://dl.google.com/android/repository/${NDK_ZIP}
+          unzip -q ${NDK_ZIP} -d ${{ github.workspace }}
+          rm ${NDK_ZIP}
+
+      - name: Set up Android toolchain
+        run: |
+          export PATH=${{ env.TOOLCHAIN_ROOT }}/android-ndk-${ANDROID_NDK_VERSION}/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH
+          export TARGET=aarch64-linux-android
+          export API=${ANDROID_API}
+          export CC=${TARGET}${API}-clang
+          export CXX=${TARGET}${API}-clang++
+          export AR=${TARGET}-ar
+          export AS=${TARGET}-as
+          export LD=${TARGET}-ld
+          export STRIP=${TARGET}-strip
+
+          echo "CC=$CC"
+          echo "CXX=$CXX"
+
+          # For convenience, write toolchain info to file for next steps
+          echo "export PATH=$PATH" >> $GITHUB_ENV
+          echo "export CC=$CC" >> $GITHUB_ENV
+          echo "export CXX=$CXX" >> $GITHUB_ENV
+          echo "export AR=$AR" >> $GITHUB_ENV
+          echo "export AS=$AS" >> $GITHUB_ENV
+          echo "export LD=$LD" >> $GITHUB_ENV
+          echo "export STRIP=$STRIP" >> $GITHUB_ENV
+          echo "export TARGET=$TARGET" >> $GITHUB_ENV
+          echo "export API=$API" >> $GITHUB_ENV
+
+      - name: Build iw
+        run: |
+          # You may need to tweak this according to iw build system
+          cd iw
+          make CC=$CC AR=$AR STRIP=$STRIP
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: iw-aarch64-android
+          path: iw/iw
