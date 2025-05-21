@@ -1,4 +1,4 @@
-name: Build iw for aarch64 Android
+name: Build iw and libnl for AArch64 Android
 
 on:
   workflow_dispatch:
@@ -8,57 +8,76 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      ANDROID_NDK_VERSION: r25c
-      ANDROID_API: 31
-      ANDROID_ARCH: arm64
-      TOOLCHAIN_ROOT: ${{ github.workspace }}/android-ndk
+      SDK_VERSION: "30"
+      NDK_VERSION: "21.4.7075529"
+      INSTALL_DIR: ${{ github.workspace }}/libnl-android
+      TOOLCHAIN_DIR: ${{ github.workspace }}/ndk-aarch64-toolchain
+      ANDROID_SDK_ROOT: ${{ github.workspace }}/Android/sdk
 
     steps:
+      - name: Checkout this repo (optional)
+        uses: actions/checkout@v4
 
-      - name: Checkout repository
-        uses: actions/checkout@v3
-
-      - name: Download Android NDK
+      - name: Install dependencies
         run: |
-          NDK_ZIP=android-ndk-${ANDROID_NDK_VERSION}-linux.zip
-          curl -LO https://dl.google.com/android/repository/${NDK_ZIP}
-          unzip -q ${NDK_ZIP} -d ${{ github.workspace }}
-          rm ${NDK_ZIP}
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential autoconf automake libtool \
+            pkg-config git wget unzip python3 g++ gpg file \
+            bison flex doxygen check libtool-bin meson valgrind \
+            graphviz mscgen source-highlight
 
-      - name: Set up Android toolchain
+      - name: Set up Android SDK and NDK
         run: |
-          export PATH=${{ env.TOOLCHAIN_ROOT }}/android-ndk-${ANDROID_NDK_VERSION}/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH
-          export TARGET=aarch64-linux-android
-          export API=${ANDROID_API}
-          export CC=${TARGET}${API}-clang
-          export CXX=${TARGET}${API}-clang++
-          export AR=${TARGET}-ar
-          export AS=${TARGET}-as
-          export LD=${TARGET}-ld
-          export STRIP=${TARGET}-strip
+          mkdir -p "$ANDROID_SDK_ROOT"
+          cd "$ANDROID_SDK_ROOT"
+          wget https://dl.google.com/android/repository/commandlinetools-linux-10406996_latest.zip -O tools.zip
+          unzip tools.zip -d cmdline-tools
+          mkdir -p cmdline-tools/latest
+          mv cmdline-tools/cmdline-tools/* cmdline-tools/latest/
+          rm tools.zip
 
-          echo "CC=$CC"
-          echo "CXX=$CXX"
+          yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --sdk_root="$ANDROID_SDK_ROOT" \
+            "platforms;android-${SDK_VERSION}" \
+            "platform-tools" \
+            "ndk;$NDK_VERSION"
 
-          # For convenience, write toolchain info to file for next steps
-          echo "export PATH=$PATH" >> $GITHUB_ENV
-          echo "export CC=$CC" >> $GITHUB_ENV
-          echo "export CXX=$CXX" >> $GITHUB_ENV
-          echo "export AR=$AR" >> $GITHUB_ENV
-          echo "export AS=$AS" >> $GITHUB_ENV
-          echo "export LD=$LD" >> $GITHUB_ENV
-          echo "export STRIP=$STRIP" >> $GITHUB_ENV
-          echo "export TARGET=$TARGET" >> $GITHUB_ENV
-          echo "export API=$API" >> $GITHUB_ENV
+      - name: Create standalone toolchain
+        run: |
+          python3 "$ANDROID_SDK_ROOT/ndk/$NDK_VERSION/build/tools/make_standalone_toolchain.py" \
+            --arch arm64 --api "$SDK_VERSION" --install-dir "$TOOLCHAIN_DIR"
+
+      - name: Set env vars
+        run: |
+          echo "PATH=$TOOLCHAIN_DIR/bin:$PATH" >> $GITHUB_ENV
+          echo "CROSS_COMPILE=aarch64-linux-android-" >> $GITHUB_ENV
+
+      - name: Build libnl using build_release.sh
+        run: |
+          git clone https://github.com/thom311/libnl.git
+          cd libnl
+          git clean -fdx
+
+          export NO_GPG_SIGN=1
+          export CROSS_COMPILE=aarch64-linux-android-
+          export PATH="${{ env.TOOLCHAIN_DIR }}/bin:$PATH"
+
+          ./tools/build_release.sh BuildAll
+
 
       - name: Build iw
         run: |
-          # You may need to tweak this according to iw build system
+          git clone https://git.kernel.org/pub/scm/linux/kernel/git/jberg/iw.git
           cd iw
-          make CC=$CC AR=$AR STRIP=$STRIP
+          make clean || true
+          make \
+            CC="${CROSS_COMPILE}gcc" \
+            CFLAGS="-I${INSTALL_DIR}/include" \
+            LDFLAGS="-L${INSTALL_DIR}/lib" \
+            NL1FOUND=y NL2FOUND=y NL3FOUND=y
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - name: Upload iw binary
+        uses: actions/upload-artifact@v3
         with:
           name: iw-aarch64-android
           path: iw/iw
