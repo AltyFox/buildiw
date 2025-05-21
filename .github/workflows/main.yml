@@ -58,7 +58,7 @@ jobs:
           make CC=$CC AR=$AR STRIP=$STRIP
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: iw-aarch64-android
           path: iw/iw
